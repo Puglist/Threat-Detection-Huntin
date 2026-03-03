@@ -1,0 +1,164 @@
+version: "3.9"
+
+services:
+
+  # ── Pipeline ────────────────────────────────────────────────
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: adthe-pipeline
+    volumes:
+      - .:/workspace
+    env_file: .env
+    depends_on:
+      - postgres
+      - ollama
+    networks:
+      - adthe
+    restart: unless-stopped
+
+  # ── PostgreSQL ───────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: adthe-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-adthe}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-adthe}
+      POSTGRES_DB: ${POSTGRES_DB:-adthe}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - adthe
+    restart: unless-stopped
+
+  # ── Ollama ───────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: adthe-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - adthe
+    restart: unless-stopped
+    # Uncomment if you have an NVIDIA GPU:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ── Prefect Server ───────────────────────────────────────────
+  prefect:
+    image: prefecthq/prefect:2-latest
+    container_name: adthe-prefect
+    command: prefect server start --host 0.0.0.0
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://${POSTGRES_USER:-adthe}:${POSTGRES_PASSWORD:-adthe}@postgres:5432/${POSTGRES_DB:-adthe}
+    ports:
+      - "4200:4200"
+    depends_on:
+      - postgres
+    networks:
+      - adthe
+    restart: unless-stopped
+
+  # ── OpenCTI ──────────────────────────────────────────────────
+  opencti:
+    image: opencti/platform:latest
+    container_name: adthe-opencti
+    environment:
+      NODE_OPTIONS: --max-old-space-size=8096
+      APP__PORT: 8080
+      APP__BASE_URL: ${OPENCTI_BASE_URL:-http://localhost:8080}
+      APP__ADMIN__EMAIL: ${OPENCTI_ADMIN_EMAIL:-admin@adthe.local}
+      APP__ADMIN__PASSWORD: ${OPENCTI_ADMIN_PASSWORD:-changeme}
+      APP__ADMIN__TOKEN: ${OPENCTI_ADMIN_TOKEN:-changeme-token}
+      REDIS__HOSTNAME: redis
+      ELASTICSEARCH__URL: http://elasticsearch:9200
+      MINIO__ENDPOINT: minio
+      MINIO__PORT: 9000
+      MINIO__USE_SSL: "false"
+      MINIO__ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO__SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      RABBITMQ__HOSTNAME: rabbitmq
+      RABBITMQ__USERNAME: ${RABBITMQ_USER:-guest}
+      RABBITMQ__PASSWORD: ${RABBITMQ_PASS:-guest}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - redis
+      - elasticsearch
+      - minio
+      - rabbitmq
+    networks:
+      - adthe
+    restart: unless-stopped
+
+  # ── OpenCTI dependencies ─────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: adthe-redis
+    volumes:
+      - redis_data:/data
+    networks:
+      - adthe
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: adthe-elasticsearch
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms2g -Xmx2g
+    volumes:
+      - elastic_data:/usr/share/elasticsearch/data
+    networks:
+      - adthe
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: adthe-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9001:9001"
+    networks:
+      - adthe
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: adthe-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - adthe
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  ollama_data:
+  elastic_data:
+  minio_data:
+  rabbitmq_data:
+  redis_data:
+
+networks:
+  adthe:
+    driver: bridge

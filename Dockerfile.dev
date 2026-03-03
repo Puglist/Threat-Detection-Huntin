@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+
+# ── System dependencies ──────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    build-essential \
+    libpq-dev \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Working directory ────────────────────────────────────────────
+WORKDIR /workspace
+
+# ── Python dependencies ──────────────────────────────────────────
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# ── Keep container alive for dev attach ─────────────────────────
+CMD ["sleep", "infinity"]

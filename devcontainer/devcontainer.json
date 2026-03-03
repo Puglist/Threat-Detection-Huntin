@@ -1,0 +1,60 @@
+{
+  "name": "ADTHE Dev Container",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "pipeline",
+  "workspaceFolder": "/workspace",
+
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "ms-python.flake8",
+        "redhat.vscode-yaml",
+        "GitHub.vscode-pull-request-github",
+        "eamodio.gitlens",
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        },
+        "python.linting.flake8Enabled": true,
+        "python.linting.enabled": true,
+        "files.associations": {
+          "*.yml": "yaml",
+          "*.yaml": "yaml"
+        }
+      }
+    }
+  },
+
+  "postCreateCommand": "pip install -r requirements.txt",
+
+  "remoteEnv": {
+    "PYTHONPATH": "/workspace"
+  },
+
+  "forwardPorts": [
+    4200,   // Prefect UI
+    8080,   // OpenCTI
+    11434,  // Ollama
+    5432,   // PostgreSQL
+    9001    // MinIO console
+  ],
+
+  "remoteUser": "root"
+}
