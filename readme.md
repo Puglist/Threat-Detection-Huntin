@@ -1,22 +1,46 @@
-
 # ADTHE — Dev Environment Setup
+
+## Stack Overview
+
+| Service | Where | Purpose |
+|---|---|---|
+| Elasticsearch | Elastic Cloud | SIEM + OpenCTI storage |
+| OpenCTI | Local Docker | Threat intel ingestion |
+| Ollama | Local Docker | LLM inference |
+| Redis | Local Docker | OpenCTI dependency |
+| MinIO | Local Docker | OpenCTI dependency |
+| RabbitMQ | Local Docker | OpenCTI dependency |
+
+---
 
 ## Prerequisites
 
 Install the following before proceeding:
 
-| Tool | Version | Download |
-|---|---|---|
-| Docker Desktop | Latest | https://www.docker.com/products/docker-desktop |
-| VS Code | Latest | https://code.visualstudio.com |
-| VS Code Dev Containers extension | Latest | [Marketplace](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) |
-| Git | Latest | https://git-scm.com |
+| Tool | Download |
+|---|---|
+| Docker Desktop | https://www.docker.com/products/docker-desktop |
+| VS Code | https://code.visualstudio.com |
+| VS Code Dev Containers extension | https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers |
+| Git | https://git-scm.com |
 
-> **Hardware minimum:** 16GB RAM recommended. OpenCTI + Elasticsearch are memory-intensive. Allocate at least 10GB to Docker in Docker Desktop → Settings → Resources.
+> **Hardware minimum:** 8GB RAM. Allocate at least 6GB to Docker in Docker Desktop → Settings → Resources.
 
 ---
 
-## 1. Clone the Repository
+## 1. Set Up Elastic Cloud
+
+1. Go to https://cloud.elastic.co and create a free account (14-day trial, no credit card)
+2. Create a new deployment — select the **Elasticsearch** template
+3. Choose any region, default settings are fine for dev
+4. Once deployed, copy:
+   - **Elasticsearch endpoint URL** (e.g. `https://xxxx.es.us-east-1.aws.found.io`)
+   - **Username** (`elastic`)
+   - **Password** (shown once on creation — save it)
+
+---
+
+## 2. Clone the Repository
 
 ```bash
 git clone https://github.com/your-org/adthe.git
@@ -25,9 +49,7 @@ cd adthe
 
 ---
 
-## 2. Configure Environment Variables
-
-Copy the example env file and fill in your values:
+## 3. Configure Environment Variables
 
 ```bash
 cp .env.example .env
@@ -36,10 +58,11 @@ cp .env.example .env
 Edit `.env`:
 
 ```env
-# PostgreSQL
-POSTGRES_USER=adthe
-POSTGRES_PASSWORD=changeme
-POSTGRES_DB=adthe
+# Elastic Cloud
+ELASTIC_CLOUD_URL=https://xxxx.es.us-east-1.aws.found.io
+ELASTIC_USERNAME=elastic
+ELASTIC_PASSWORD=your-elastic-password
+ELASTIC_API_KEY=your-elastic-api-key
 
 # OpenCTI
 OPENCTI_BASE_URL=http://localhost:8080
@@ -47,27 +70,24 @@ OPENCTI_ADMIN_EMAIL=admin@adthe.local
 OPENCTI_ADMIN_PASSWORD=changeme
 OPENCTI_ADMIN_TOKEN=changeme-token
 
-# MinIO
+# MinIO (OpenCTI dependency)
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 
-# RabbitMQ
+# RabbitMQ (OpenCTI dependency)
 RABBITMQ_USER=guest
 RABBITMQ_PASS=guest
 
 # GitHub
 GITHUB_TOKEN=your-github-pat
-
-# Wazuh
-WAZUH_API_URL=https://your-wazuh-manager:55000
-WAZUH_API_KEY=your-wazuh-api-key
+GITHUB_REPO=your-org/adthe
 ```
 
 > **Never commit `.env` to GitHub.** It is already listed in `.gitignore`.
 
 ---
 
-## 3. Start the Dev Container
+## 4. Start the Dev Container
 
 ### Option A — VS Code (recommended)
 
@@ -75,43 +95,31 @@ WAZUH_API_KEY=your-wazuh-api-key
 2. When prompted **"Reopen in Container"** click it — or manually:
    - `Ctrl+Shift+P` (Windows/Linux) / `Cmd+Shift+P` (macOS)
    - Select **Dev Containers: Reopen in Container**
-3. VS Code will:
-   - Build the `Dockerfile.dev` image
-   - Start all services via `docker-compose.yml`
-   - Install Python dependencies from `requirements.txt`
-   - Attach the editor to the `adthe-pipeline` container
+3. VS Code will build the image, start all services, install dependencies, and attach.
 
 ### Option B — Terminal only
 
 ```bash
-# Build and start all services
 docker compose up -d --build
-
-# Attach a shell to the pipeline container
 docker exec -it adthe-pipeline bash
 ```
 
 ---
 
-## 4. Verify Services Are Running
+## 5. Verify Services Are Running
 
 ```bash
 docker compose ps
 ```
 
-All services should show `running`. Then verify each:
-
-| Service | URL | Default Credentials |
+| Service | URL | Credentials |
 |---|---|---|
 | OpenCTI | http://localhost:8080 | admin@adthe.local / changeme |
-| Prefect UI | http://localhost:4200 | — |
 | MinIO Console | http://localhost:9001 | minioadmin / minioadmin |
 | Ollama API | http://localhost:11434 | — |
-| PostgreSQL | localhost:5432 | adthe / changeme |
+| Elastic Cloud | your cloud URL | elastic / your-password |
 
-### Check OpenCTI is ready
-
-OpenCTI and Elasticsearch take 3–5 minutes on first boot:
+### Wait for OpenCTI to be ready
 
 ```bash
 docker compose logs -f opencti
@@ -124,45 +132,41 @@ OpenCTI platform is ready
 
 ---
 
-## 5. Pull an Ollama Model
-
-Once the stack is running, pull a model into Ollama:
+## 6. Pull an Ollama Model
 
 ```bash
-# From inside the pipeline container (or your host terminal)
 docker exec -it adthe-ollama ollama pull llama3
 ```
 
-Update `settings.yaml` to match whichever model you pull:
+Update `settings.yaml` to match:
 
 ```yaml
 ollama:
   model: "llama3"
 ```
 
-**Recommended models by hardware:**
+**Model selection by available RAM:**
 
-| RAM Available | Model |
+| Docker RAM | Recommended Model |
 |---|---|
-| 8GB | `mistral` |
-| 16GB | `llama3` |
-| 32GB+ | `mixtral` or `llama3:70b` |
+| 6GB | `mistral` |
+| 10GB | `llama3` |
+| 16GB+ | `mixtral` |
 
 ---
 
-## 6. Repository File Placement
+## 7. Verify Elastic Cloud Connection
 
-Ensure your `.devcontainer/` folder is structured as follows:
+From inside the pipeline container:
 
-```
-adthe/
-├── .devcontainer/
-│   └── devcontainer.json
-├── Dockerfile.dev
-├── docker-compose.yml
-├── requirements.txt
-├── settings.yaml
-└── .env
+```bash
+python -c "
+from elasticsearch import Elasticsearch
+import os
+es = Elasticsearch(os.environ['ELASTIC_CLOUD_URL'],
+                   basic_auth=(os.environ['ELASTIC_USERNAME'], os.environ['ELASTIC_PASSWORD']))
+print(es.info())
+"
 ```
 
 ---
@@ -170,10 +174,10 @@ adthe/
 ## Stopping the Environment
 
 ```bash
-# Stop all containers (preserves data volumes)
+# Stop all containers (preserves volumes)
 docker compose stop
 
-# Stop and remove containers (preserves data volumes)
+# Stop and remove containers (preserves volumes)
 docker compose down
 
 # Stop and remove everything including volumes (destructive)
@@ -184,26 +188,19 @@ docker compose down -v
 
 ## Troubleshooting
 
-**Elasticsearch fails to start**
-```bash
-# Increase vm.max_map_count on Linux hosts
-sudo sysctl -w vm.max_map_count=262144
-```
-On Docker Desktop (Mac/Windows) this is handled automatically.
+**OpenCTI fails to connect to Elasticsearch**
+- Verify `ELASTIC_CLOUD_URL` includes `https://` and has no trailing slash
+- Check your Elastic Cloud deployment is active (free trials pause after inactivity)
+
+**Ollama running slowly**
+- Switch to `mistral` for lower memory usage
+- Increase Docker Desktop memory allocation
+
+**Port conflicts**
+- Check nothing else is running on `8080`, `11434`, or `9001`
+- Edit port mappings in `docker-compose.yml` if needed
 
 **OpenCTI stuck on startup**
 ```bash
 docker compose restart opencti
 ```
-If it persists, check Elasticsearch is healthy first:
-```bash
-docker compose logs elasticsearch
-```
-
-**Ollama running slowly / out of memory**
-- Switch to a smaller model (`mistral` instead of `llama3`)
-- Ensure Docker has enough RAM allocated in Docker Desktop settings
-
-**Port conflicts**
-- Check nothing else is running on ports `8080`, `4200`, `11434`, `5432`, or `9001`
-- Edit port mappings in `docker-compose.yml` if needed
